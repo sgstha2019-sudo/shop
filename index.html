@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Grocery Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600&family=DM+Mono:wght@400;500&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0e1117;
+      margin: 0;
+      font-family: 'Lora', Georgia, serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+    input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.22); }
+    input:focus, textarea:focus { outline: none; }
+    textarea { resize: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + ReactDOM + Babel standalone -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Your grocery app, written in JSX (transpiled in the browser) -->
+  <script type="text/babel">
+    const { useState, useRef, useCallback } = React;
+
+    const INITIAL_ITEMS = [
+      "Corn flour", "Cream", "Khursani", "Cauliflower", "Soyabean",
+      "Oyster sauce, Siracha, Chowmein", "Mango", "Cucumber, Frozen peas",
+      "Tomato", "Chicken", "Avocado", "Rajma", "Black chana", "Jwano",
+      "Methi", "Sano kerau", "Lemon", "Frozen Matar", "Mustard oil",
+      "Baking powder", "Baking Soda", "Ajinomoto", "Chat masala",
+      "Kabab masala", "Forks",
+    ].map((name, i) => ({ id: i + 1, name, done: false }));
+
+    let nextId = INITIAL_ITEMS.length + 1;
+    const SWIPE_THRESHOLD = 80;
+
+    function parseListText(text) {
+      return text
+        .split("\n")
+        .map(line =>
+          line.replace(/^\s*\d+[.)]\s*/, "")
+              .replace(/^\s*[-•*]\s*/, "")
+              .trim()
+        )
+        .filter(Boolean);
+    }
+
+    function GroceryItem({ item, onToggle, onDelete }) {
+      const startX = useRef(null);
+      const startY = useRef(null);
+      const [offset, setOffset] = useState(0);
+      const [swiping, setSwiping] = useState(false);
+      const [dismissed, setDismissed] = useState(false);
+      const [direction, setDirection] = useState(0);
+
+      const handleStart = (clientX, clientY) => {
+        startX.current = clientX;
+        startY.current = clientY;
+        setSwiping(true);
+      };
+
+      const handleMove = (clientX, clientY) => {
+        if (startX.current === null) return;
+        const dx = clientX - startX.current;
+        const dy = clientY - startY.current;
+        if (Math.abs(dy) > Math.abs(dx) * 1.5) return;
+        setOffset(dx);
+        setDirection(dx > 0 ? 1 : -1);
+      };
+
+      const handleEnd = () => {
+        if (Math.abs(offset) > SWIPE_THRESHOLD) {
+          setDismissed(true);
+          setTimeout(() => onToggle(item.id), 320);
+        } else {
+          setOffset(0);
+        }
+        setSwiping(false);
+        startX.current = null;
+      };
+
+      const bgOpacity = Math.min(Math.abs(offset) / SWIPE_THRESHOLD, 1);
+
+      return (
+        <div style={{
+          position: "relative", overflow: "hidden", marginBottom: "8px", borderRadius: "12px",
+          height: dismissed ? 0 : undefined, opacity: dismissed ? 0 : 1,
+          transition: dismissed ? "height 0.3s ease, opacity 0.3s ease, margin 0.3s ease" : "none",
+        }}>
+          <div style={{
+            position: "absolute", inset: 0, borderRadius: "12px",
+            background: direction > 0
+              ? `rgba(74,222,128,${bgOpacity * 0.28})`
+              : `rgba(251,146,60,${bgOpacity * 0.28})`,
+            display: "flex", alignItems: "center",
+            justifyContent: direction > 0 ? "flex-start" : "flex-end",
+            padding: "0 20px", fontSize: "18px",
+          }}>
+            <span style={{ opacity: bgOpacity }}>{direction > 0 ? "✓" : "↩"}</span>
+          </div>
+
+          <div
+            onMouseDown={e => handleStart(e.clientX, e.clientY)}
+            onMouseMove={e => swiping && handleMove(e.clientX, e.clientY)}
+            onMouseUp={handleEnd}
+            onMouseLeave={handleEnd}
+            onTouchStart={e => handleStart(e.touches[0].clientX, e.touches[0].clientY)}
+            onTouchMove={e => handleMove(e.touches[0].clientX, e.touches[0].clientY)}
+            onTouchEnd={handleEnd}
+            style={{
+              display: "flex", alignItems: "center", gap: "12px",
+              padding: "13px 16px", borderRadius: "12px",
+              background: item.done ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.08)",
+              border: `1px solid ${item.done ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.12)"}`,
+              cursor: "grab", userSelect: "none",
+              transform: `translateX(${offset}px)`,
+              transition: swiping ? "none" : "transform 0.3s cubic-bezier(0.34,1.56,0.64,1)",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <div
+              onClick={e => { e.stopPropagation(); onToggle(item.id); }}
+              style={{
+                width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                border: `2px solid ${item.done ? "#4ade80" : "rgba(255,255,255,0.25)"}`,
+                background: item.done ? "#4ade80" : "transparent",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", transition: "all 0.2s",
+              }}
+            >
+              {item.done && <span style={{ color: "#0e1117", fontSize: 12, fontWeight: 700 }}>✓</span>}
+            </div>
+
+            <div style={{ flex: 1 }}>
+              <div style={{
+                fontFamily: "'Lora', Georgia, serif", fontSize: "15px", fontWeight: 500,
+                color: item.done ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.9)",
+                textDecoration: item.done ? "line-through" : "none",
+                transition: "all 0.2s",
+              }}>{item.name}</div>
+            </div>
+
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(item.id); }}
+              style={{
+                background: "none", border: "none", color: "rgba(255,255,255,0.18)",
+                fontSize: 17, cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1,
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = "rgba(251,113,133,0.7)"}
+              onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.18)"}
+            >×</button>
+          </div>
+        </div>
+      );
+    }
+
+    function GroceryApp() {
+      const [items, setItems] = useState(INITIAL_ITEMS);
+      const [newName, setNewName] = useState("");
+      const [pasteMode, setPasteMode] = useState(false);
+      const [pasteText, setPasteText] = useState("");
+      const [pastePreview, setPastePreview] = useState([]);
+
+      const toggle = useCallback(id => {
+        setItems(prev => prev.map(i => i.id === id ? { ...i, done: !i.done } : i));
+      }, []);
+
+      const remove = useCallback(id => {
+        setItems(prev => prev.filter(i => i.id !== id));
+      }, []);
+
+      const addSingle = () => {
+        const name = newName.trim();
+        if (!name) return;
+        setItems(prev => [...prev, { id: nextId++, name, done: false }]);
+        setNewName("");
+      };
+
+      const handlePasteChange = (text) => {
+        setPasteText(text);
+        setPastePreview(parseListText(text));
+      };
+
+      const importPasted = () => {
+        if (!pastePreview.length) return;
+        const newItems = pastePreview.map(name => ({ id: nextId++, name, done: false }));
+        setItems(prev => [...prev, ...newItems]);
+        setPasteText("");
+        setPastePreview([]);
+        setPasteMode(false);
+      };
+
+      const clearDone = () => setItems(prev => prev.filter(i => !i.done));
+
+      const pending = items.filter(i => !i.done);
+      const done = items.filter(i => i.done);
+      const pct = items.length ? Math.round((done.length / items.length) * 100) : 0;
+
+      return (
+        <div style={{
+          minHeight: "100vh",
+          background: "linear-gradient(135deg, #0e1117 0%, #141a24 50%, #0e1117 100%)",
+          display: "flex", justifyContent: "center",
+          padding: "36px 16px 80px",
+        }}>
+          <div style={{ width: "100%", maxWidth: 420 }}>
+            {/* Header */}
+            <div style={{ marginBottom: 28, textAlign: "center" }}>
+              <div style={{
+                fontFamily: "'DM Mono', monospace", fontSize: 10,
+                letterSpacing: "0.2em", textTransform: "uppercase",
+                color: "rgba(134,239,172,0.55)", marginBottom: 6,
+              }}>Market List</div>
+              <h1 style={{
+                fontFamily: "'Playfair Display', Georgia, serif",
+                fontSize: "clamp(30px, 8vw, 40px)", fontWeight: 800,
+                color: "#fff", letterSpacing: "-0.02em", lineHeight: 1.1,
+              }}>
+                Grocery{" "}
+                <span style={{
+                  background: "linear-gradient(90deg, #4ade80, #86efac)",
+                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+                }}>Planner</span>
+              </h1>
+
+              <div style={{ marginTop: 18 }}>
+                <div style={{
+                  display: "flex", justifyContent: "space-between",
+                  alignItems: "center", marginBottom: 6,
+                }}>
+                  <span style={{
+                    fontFamily: "'DM Mono', monospace", fontSize: 10,
+                    color: "rgba(255,255,255,0.32)", letterSpacing: "0.06em", textTransform: "uppercase",
+                  }}>{done.length} / {items.length} picked · {pct}%</span>
+                  {done.length > 0 && (
+                    <button onClick={clearDone} style={{
+                      fontFamily: "'DM Mono', monospace", fontSize: 10,
+                      color: "rgba(251,113,133,0.65)", background: "none", border: "none",
+                      cursor: "pointer", letterSpacing: "0.06em", textTransform: "uppercase",
+                    }}>Clear done</button>
+                  )}
+                </div>
+                <div style={{ height: 3, background: "rgba(255,255,255,0.07)", borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{
+                    height: "100%", width: `${pct}%`,
+                    background: "linear-gradient(90deg, #4ade80, #86efac)",
+                    borderRadius: 99, transition: "width 0.4s cubic-bezier(0.34,1.56,0.64,1)",
+                  }} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              fontFamily: "'DM Mono', monospace", fontSize: 10,
+              color: "rgba(255,255,255,0.18)", textAlign: "center",
+              marginBottom: 16, letterSpacing: "0.05em", textTransform: "uppercase",
+            }}>← swipe to toggle done →</div>
+
+            {pending.map(item => (
+              <GroceryItem key={item.id} item={item} onToggle={toggle} onDelete={remove} />
+            ))}
+
+            {done.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{
+                  fontFamily: "'DM Mono', monospace", fontSize: 10,
+                  color: "rgba(255,255,255,0.17)", textTransform: "uppercase",
+                  letterSpacing: "0.12em", margin: "16px 0 10px 4px",
+                }}>— Picked up</div>
+                {done.map(item => (
+                  <GroceryItem key={item.id} item={item} onToggle={toggle} onDelete={remove} />
+                ))}
+              </div>
+            )}
+
+            {items.length === 0 && (
+              <div style={{
+                textAlign: "center", padding: "48px 0",
+                fontFamily: "'Lora', serif", color: "rgba(255,255,255,0.2)", fontSize: 15,
+              }}>Your list is empty 🛒</div>
+            )}
+
+            <div style={{
+              marginTop: 28,
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.09)",
+              borderRadius: 16, padding: "14px 16px",
+            }}>
+              <div style={{
+                display: "flex", gap: 6, marginBottom: 14,
+                background: "rgba(0,0,0,0.3)", borderRadius: 10, padding: 4,
+              }}>
+                {["Single item", "Paste list"].map((label, i) => {
+                  const active = pasteMode === (i === 1);
+                  return (
+                    <button key={label} onClick={() => setPasteMode(i === 1)} style={{
+                      flex: 1, padding: "7px 0", borderRadius: 7, border: "none",
+                      background: active ? "rgba(74,222,128,0.15)" : "transparent",
+                      color: active ? "#4ade80" : "rgba(255,255,255,0.3)",
+                      fontFamily: "'DM Mono', monospace", fontSize: 11,
+                      letterSpacing: "0.07em", textTransform: "uppercase",
+                      cursor: "pointer", transition: "all 0.18s",
+                    }}>{label}</button>
+                  );
+                })}
+              </div>
+
+              {!pasteMode ? (
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    value={newName}
+                    onChange={e => setNewName(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && addSingle()}
+                    placeholder="Add an item…"
+                    style={{
+                      flex: 1, background: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.1)", borderRadius: 9,
+                      padding: "10px 13px", color: "#fff",
+                      fontFamily: "'Lora', serif", fontSize: 14,
+                    }}
+                  />
+                  <button onClick={addSingle} style={{
+                    padding: "10px 18px", borderRadius: 9, border: "none",
+                    background: "linear-gradient(135deg, #4ade80, #22c55e)",
+                    color: "#0e1117", fontFamily: "'DM Mono', monospace",
+                    fontSize: 12, fontWeight: 500, cursor: "pointer", letterSpacing: "0.05em",
+                  }}>Add</button>
+                </div>
+              ) : (
+                <div>
+                  <textarea
+                    rows={7}
+                    value={pasteText}
+                    onChange={e => handlePasteChange(e.target.value)}
+                    placeholder={"Paste your list here:\n\n1. Corn flour\n2. Chicken\n3. Avocado\n\nNumbers, bullets — anything works."}
+                    style={{
+                      width: "100%", background: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.1)", borderRadius: 9,
+                      padding: "11px 13px", color: "#fff",
+                      fontFamily: "'DM Mono', monospace", fontSize: 12,
+                      lineHeight: 1.7, marginBottom: 10,
+                    }}
+                  />
+
+                  {pastePreview.length > 0 && (
+                    <div style={{
+                      background: "rgba(74,222,128,0.05)",
+                      border: "1px solid rgba(74,222,128,0.14)",
+                      borderRadius: 9, padding: "10px 13px", marginBottom: 10,
+                      maxHeight: 150, overflowY: "auto",
+                    }}>
+                      <div style={{
+                        fontFamily: "'DM Mono', monospace", fontSize: 9,
+                        color: "rgba(74,222,128,0.55)", textTransform: "uppercase",
+                        letterSpacing: "0.12em", marginBottom: 8,
+                      }}>{pastePreview.length} items detected</div>
+                      {pastePreview.map((name, i) => (
+                        <div key={i} style={{
+                          fontFamily: "'Lora', serif", fontSize: 13,
+                          color: "rgba(255,255,255,0.7)", padding: "3px 0",
+                          borderBottom: i < pastePreview.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
+                          display: "flex", gap: 8, alignItems: "baseline",
+                        }}>
+                          <span style={{ color: "rgba(74,222,128,0.4)", fontFamily: "'DM Mono', monospace", fontSize: 10, flexShrink: 0 }}>{i + 1}</span>
+                          {name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={importPasted}
+                    disabled={pastePreview.length === 0}
+                    style={{
+                      width: "100%", padding: "11px", borderRadius: 9, border: "none",
+                      background: pastePreview.length > 0
+                        ? "linear-gradient(135deg, #4ade80, #22c55e)"
+                        : "rgba(255,255,255,0.06)",
+                      color: pastePreview.length > 0 ? "#0e1117" : "rgba(255,255,255,0.22)",
+                      fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 500,
+                      letterSpacing: "0.08em", textTransform: "uppercase",
+                      cursor: pastePreview.length > 0 ? "pointer" : "default",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    {pastePreview.length > 0 ? `Import ${pastePreview.length} items →` : "Paste a list above"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Mount the app
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<GroceryApp />);
+  </script>
+</body>
+</html>
